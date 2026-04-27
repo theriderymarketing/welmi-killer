@@ -72,7 +72,11 @@ export async function chat(prompt: string, system?: string): Promise<string> {
  * Vision call. Sends an image (local URI from camera/gallery) plus a prompt.
  * The proxy expects multipart with fields { prompt, image }.
  */
-export async function vision(opts: { imageUri: string; prompt: string; system?: string }): Promise<string> {
+/**
+ * Note: the proxy /v1/vision endpoint does NOT accept a `system` field —
+ * fold any system instructions into `prompt` before calling.
+ */
+export async function vision(opts: { imageUri: string; prompt: string }): Promise<string> {
   const form = new FormData();
   form.append('image', {
     uri: opts.imageUri,
@@ -81,7 +85,6 @@ export async function vision(opts: { imageUri: string; prompt: string; system?: 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
   form.append('prompt', opts.prompt);
-  if (opts.system) form.append('system', opts.system);
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 120_000);

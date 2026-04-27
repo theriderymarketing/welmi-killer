@@ -64,12 +64,11 @@ function reconcileConfidence(parsed: FoodAnalysis): FoodAnalysis {
 export async function analyzeFoodPhoto(localUri: string): Promise<FoodAnalysis> {
   const [compressed, prompt] = await Promise.all([compressImage(localUri), getPrompt('foodAnalysis')]);
 
-  const text = await vision({
-    imageUri: compressed,
-    prompt: prompt.userInstruction ?? 'Analyze this meal. JSON only.',
-    system: prompt.system
-  });
+  // /v1/vision endpoint does NOT accept `system` separately —
+  // we fold the system instructions into the prompt body.
+  const fullPrompt = `${prompt.system}\n\n---\n\n${prompt.userInstruction ?? 'Analyze this meal. JSON only.'}`;
 
+  const text = await vision({ imageUri: compressed, prompt: fullPrompt });
   return reconcileConfidence(FoodAnalysisSchema.parse(extractJson(text)));
 }
 
