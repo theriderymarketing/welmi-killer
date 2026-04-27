@@ -56,7 +56,7 @@ npx expo run:ios           # dev build (sideload-compatible)
 
 1. Build IPA: tag a release `git tag v0.1.0 && git push --tags`
 2. CI builds via EAS, uploads IPA to Releases, bumps `welmi-killer-data/altstore/apps.json`
-3. On iPhone, open AltStore/SideStore → Sources → Add `https://kevinmonin72.github.io/welmi-killer-data/altstore/apps.json`
+3. On iPhone, open AltStore/SideStore → Sources → Add `https://theriderymarketing.github.io/welmi-killer-data/altstore/apps.json`
 4. Install Welmi Killer
 
 ## Roadmap

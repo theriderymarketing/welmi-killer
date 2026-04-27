@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 
-const OWNER = 'kevinmonin72';
+const OWNER = 'theriderymarketing';
 const DATA_REPO = 'welmi-killer-data';
 const APP_REPO = 'welmi-killer';
 const MANIFEST_PATH = 'altstore/apps.json';
