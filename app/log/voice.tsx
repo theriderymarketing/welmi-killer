@@ -1,26 +1,29 @@
-import { View, Pressable, ActivityIndicator } from 'react-native';
+import { View, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withTiming,
-  Easing
+  Easing,
+  SlideInDown
 } from 'react-native-reanimated';
-import { useEffect } from 'react';
 import { T } from '@/components/ui/Text';
+import { ConfirmSheet } from '@/components/scan/ConfirmSheet';
 import { useVoiceRecognizer } from '@/lib/speech/recognizer';
 import { useAnalyzeVoice, useSaveMeal } from '@/hooks/useAnalyzeFood';
-import { colors, radius, type } from '@/theme';
+import { colors, type } from '@/theme';
 import * as haptics from '@/lib/utils/haptics';
+import type { FoodAnalysis } from '@/lib/ai/foodAnalysis';
 
 export default function VoiceScreen() {
   const { transcript, isRecording, start, stop } = useVoiceRecognizer();
   const analyze = useAnalyzeVoice();
   const save = useSaveMeal();
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<FoodAnalysis | null>(null);
 
   const pulse = useSharedValue(1);
 
@@ -55,24 +58,9 @@ export default function VoiceScreen() {
     if (!text.trim()) return;
     setBusy(true);
     try {
-      const result = await analyze.mutateAsync(text);
-      if (!result.usable) throw new Error(result.warning ?? 'unusable');
-      await save.mutateAsync({
-        consumedAt: new Date(),
-        source: 'voice',
-        rawInput: text,
-        aiConfidence: result.confidence,
-        items: result.items.map((i) => ({
-          name: i.name,
-          quantityG: i.quantity_g,
-          kcal: i.kcal,
-          proteinG: i.protein_g,
-          carbsG: i.carbs_g,
-          fatG: i.fat_g,
-          confidence: i.confidence
-        }))
-      });
-      router.back();
+      const r = await analyze.mutateAsync(text);
+      if (!r.usable) throw new Error(r.warning ?? 'unusable');
+      setResult(r);
     } catch (e) {
       haptics.error();
       console.warn(e);
@@ -81,9 +69,28 @@ export default function VoiceScreen() {
     }
   };
 
+  const confirmSave = async (items: FoodAnalysis['items']) => {
+    if (!result) return;
+    await save.mutateAsync({
+      consumedAt: new Date(),
+      source: 'voice',
+      rawInput: transcript,
+      aiConfidence: result.confidence,
+      items: items.map((i) => ({
+        name: i.name,
+        quantityG: i.quantity_g,
+        kcal: i.kcal,
+        proteinG: i.protein_g,
+        carbsG: i.carbs_g,
+        fatG: i.fat_g,
+        confidence: i.confidence
+      }))
+    });
+    router.back();
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }}>
-      {/* Top: cancel */}
       <View style={{ paddingHorizontal: 20, paddingTop: 8, alignItems: 'flex-end' }}>
         <Pressable onPress={() => router.back()} hitSlop={16}>
           <T variant="bodyMd" color={colors.inkMid}>
@@ -92,7 +99,6 @@ export default function VoiceScreen() {
         </Pressable>
       </View>
 
-      {/* Title */}
       <View style={{ paddingHorizontal: 24, marginTop: 24 }}>
         <T variant="label" color={colors.inkLow} uppercase>
           Voice log · on-device
@@ -111,7 +117,6 @@ export default function VoiceScreen() {
         </T>
       </View>
 
-      {/* Transcript */}
       <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
         <T
           style={{
@@ -129,7 +134,6 @@ export default function VoiceScreen() {
         </T>
       </View>
 
-      {/* Mic button */}
       <View style={{ alignItems: 'center', paddingBottom: 40 }}>
         <Animated.View style={pulseStyle}>
           <Pressable
@@ -163,6 +167,25 @@ export default function VoiceScreen() {
           {busy ? 'Analyzing' : isRecording ? 'Recording' : 'Hold to speak'}
         </T>
       </View>
+
+      <Modal
+        visible={!!result}
+        transparent
+        animationType="none"
+        onRequestClose={() => setResult(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <Animated.View entering={SlideInDown.duration(320)}>
+            {result ? (
+              <ConfirmSheet
+                result={result}
+                onConfirm={confirmSave}
+                onCancel={() => setResult(null)}
+              />
+            ) : null}
+          </Animated.View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

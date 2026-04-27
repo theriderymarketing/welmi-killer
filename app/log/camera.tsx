@@ -1,18 +1,22 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { View, Pressable, ActivityIndicator } from 'react-native';
+import { View, Pressable, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRef, useState } from 'react';
 import { router } from 'expo-router';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { T } from '@/components/ui/Text';
+import { ConfirmSheet } from '@/components/scan/ConfirmSheet';
 import { useAnalyzePhoto, useSaveMeal } from '@/hooks/useAnalyzeFood';
 import { colors, radius } from '@/theme';
 import * as haptics from '@/lib/utils/haptics';
+import type { FoodAnalysis } from '@/lib/ai/foodAnalysis';
 
 export default function CameraScreen() {
   const [perm, requestPerm] = useCameraPermissions();
   const cameraRef = useRef<CameraView | null>(null);
   const [busy, setBusy] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [result, setResult] = useState<FoodAnalysis | null>(null);
 
   const analyze = useAnalyzePhoto();
   const save = useSaveMeal();
@@ -21,7 +25,9 @@ export default function CameraScreen() {
   if (!perm.granted) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+        <View
+          style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}
+        >
           <T variant="h2" color={colors.inkHi} align="center">
             Camera permission needed
           </T>
@@ -56,40 +62,45 @@ export default function CameraScreen() {
       setBusy(false);
       return;
     }
-
+    setPhotoUri(photo.uri);
     try {
-      const result = await analyze.mutateAsync(photo.uri);
-      if (!result.usable) throw new Error(result.warning ?? 'unusable');
-
-      await save.mutateAsync({
-        consumedAt: new Date(),
-        source: 'photo',
-        photoLocalPath: photo.uri,
-        aiConfidence: result.confidence,
-        items: result.items.map((i) => ({
-          name: i.name,
-          quantityG: i.quantity_g,
-          kcal: i.kcal,
-          proteinG: i.protein_g,
-          carbsG: i.carbs_g,
-          fatG: i.fat_g,
-          confidence: i.confidence
-        }))
-      });
-      router.back();
+      const r = await analyze.mutateAsync(photo.uri);
+      if (!r.usable) throw new Error(r.warning ?? 'unusable');
+      setResult(r);
     } catch (e) {
       haptics.error();
       console.warn(e);
+      setPhotoUri(null);
     } finally {
       setBusy(false);
     }
+  };
+
+  const confirmSave = async (items: FoodAnalysis['items']) => {
+    if (!result) return;
+    await save.mutateAsync({
+      consumedAt: new Date(),
+      source: 'photo',
+      photoLocalPath: photoUri ?? undefined,
+      aiConfidence: result.confidence,
+      items: items.map((i) => ({
+        name: i.name,
+        quantityG: i.quantity_g,
+        kcal: i.kcal,
+        proteinG: i.protein_g,
+        carbsG: i.carbs_g,
+        fatG: i.fat_g,
+        confidence: i.confidence
+      }))
+    });
+    router.back();
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
 
-      {/* Top: cancel + framing hint */}
+      {/* Top — cancel + framing hint */}
       <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
         <View
           style={{
@@ -128,7 +139,7 @@ export default function CameraScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Bottom: shutter */}
+      {/* Bottom — shutter or analyzing card */}
       <SafeAreaView edges={['bottom']} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
         <View style={{ alignItems: 'center', paddingBottom: 24 }}>
           {busy ? (
@@ -176,6 +187,29 @@ export default function CameraScreen() {
           )}
         </View>
       </SafeAreaView>
+
+      {/* Confirm sheet — bottom modal */}
+      <Modal
+        visible={!!result}
+        transparent
+        animationType="none"
+        onRequestClose={() => setResult(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <Animated.View entering={SlideInDown.duration(320)}>
+            {result ? (
+              <ConfirmSheet
+                result={result}
+                onConfirm={confirmSave}
+                onCancel={() => {
+                  setResult(null);
+                  setPhotoUri(null);
+                }}
+              />
+            ) : null}
+          </Animated.View>
+        </View>
+      </Modal>
     </View>
   );
 }
