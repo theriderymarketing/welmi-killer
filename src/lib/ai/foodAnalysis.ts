@@ -1,7 +1,6 @@
-import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { z } from 'zod';
-import { callClaude, extractText } from './claudeProxy';
+import { chat, vision } from './claudeProxy';
 import { getPrompt } from '../github/prompts';
 
 export const FoodItemSchema = z.object({
@@ -30,75 +29,52 @@ export const FoodAnalysisSchema = z.object({
 
 export type FoodAnalysis = z.infer<typeof FoodAnalysisSchema>;
 
-/** Compresses + base64-encodes a local image URI. */
-async function prepareImage(uri: string): Promise<string> {
-  const compressed = await ImageManipulator.manipulateAsync(
+/** Compresses an image (max 1024px wide, JPEG q=0.7) before upload. */
+async function compressImage(uri: string): Promise<string> {
+  const out = await ImageManipulator.manipulateAsync(
     uri,
     [{ resize: { width: 1024 } }],
-    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
   );
-  if (!compressed.base64) throw new Error('image_encode_failed');
-  return compressed.base64;
+  return out.uri;
 }
 
-/** Extracts JSON from an LLM response, tolerant to ```json fences. */
+/** Tolerant JSON extraction (handles ```json fences and surrounding prose). */
 function extractJson(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = (fenced?.[1] ?? text).trim();
+  let candidate = (fenced?.[1] ?? text).trim();
+  // Trim anything before first `{` and after last `}`
+  const first = candidate.indexOf('{');
+  const last = candidate.lastIndexOf('}');
+  if (first >= 0 && last > first) candidate = candidate.slice(first, last + 1);
   return JSON.parse(candidate);
 }
 
-export async function analyzeFoodPhoto(localUri: string): Promise<FoodAnalysis> {
-  const [base64, prompt] = await Promise.all([
-    prepareImage(localUri),
-    getPrompt('foodAnalysis')
-  ]);
+function reconcileConfidence(parsed: FoodAnalysis): FoodAnalysis {
+  if (!parsed.usable) return parsed;
+  const computed = parsed.items.reduce(
+    (a, i) => a + i.protein_g * 4 + i.carbs_g * 4 + i.fat_g * 9,
+    0
+  );
+  const drift = Math.abs(computed - parsed.totals.kcal) / Math.max(parsed.totals.kcal, 1);
+  if (drift > 0.15) parsed.confidence = parsed.confidence * 0.7;
+  return parsed;
+}
 
-  const resp = await callClaude({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    temperature: 0.2,
-    system: prompt.system,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            source: { type: 'base64', media_type: 'image/jpeg', data: base64 }
-          },
-          { type: 'text', text: prompt.userInstruction ?? 'Analyze this meal. JSON only.' }
-        ]
-      }
-    ]
+export async function analyzeFoodPhoto(localUri: string): Promise<FoodAnalysis> {
+  const [compressed, prompt] = await Promise.all([compressImage(localUri), getPrompt('foodAnalysis')]);
+
+  const text = await vision({
+    imageUri: compressed,
+    prompt: prompt.userInstruction ?? 'Analyze this meal. JSON only.',
+    system: prompt.system
   });
 
-  const text = extractText(resp);
-  const parsed = FoodAnalysisSchema.parse(extractJson(text));
-
-  // Sanity: macro/kcal reconciliation — penalize confidence on drift > 15%
-  if (parsed.usable) {
-    const computed = parsed.items.reduce(
-      (a, i) => a + i.protein_g * 4 + i.carbs_g * 4 + i.fat_g * 9,
-      0
-    );
-    const drift = Math.abs(computed - parsed.totals.kcal) / Math.max(parsed.totals.kcal, 1);
-    if (drift > 0.15) parsed.confidence = parsed.confidence * 0.7;
-  }
-  return parsed;
+  return reconcileConfidence(FoodAnalysisSchema.parse(extractJson(text)));
 }
 
 export async function analyzeFoodVoice(transcript: string): Promise<FoodAnalysis> {
   const prompt = await getPrompt('voiceParse');
-
-  const resp = await callClaude({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 768,
-    temperature: 0.2,
-    system: prompt.system,
-    messages: [{ role: 'user', content: transcript }]
-  });
-
-  const text = extractText(resp);
-  return FoodAnalysisSchema.parse(extractJson(text));
+  const text = await chat(transcript, prompt.system);
+  return reconcileConfidence(FoodAnalysisSchema.parse(extractJson(text)));
 }

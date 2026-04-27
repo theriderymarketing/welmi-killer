@@ -1,58 +1,100 @@
 /**
- * Welmi Claude proxy client — routes through user's Codespace proxy
- * which consumes the Max plan. Marginal cost ≈ €0.
+ * Welmi proxy client.
  *
- * Endpoint: POST {PROXY_URL}/v1/messages   (Anthropic-compatible body)
+ * Welmi proxy stack:
+ *   Cloudflare Worker (welmi-proxy.welmi.workers.dev)
+ *     -> wakes Codespace (FastAPI :8787)
+ *     -> Claude Code CLI in headless (`claude -p ...`)
+ *     -> Returns JSON
+ *
+ * Auth: Bearer PROXY_API_KEY.
+ * Cold start (first call after 30min idle): 60-90s.
+ * Warm calls: 2-3s.
+ * Concurrency: 1 request at a time (asyncio mutex on /v1/chat and /v1/vision).
+ *
+ * Endpoints:
+ *   POST /v1/chat    { prompt: string, system?: string }              -> { response: string }
+ *   POST /v1/vision  multipart fields { prompt, image }               -> { response: string }
+ *   GET  /health
  */
 
 const PROXY_URL = process.env.EXPO_PUBLIC_CLAUDE_PROXY_URL!;
 const PROXY_KEY = process.env.EXPO_PUBLIC_CLAUDE_PROXY_KEY!;
 
-export type ClaudeMessage =
-  | { role: 'user' | 'assistant'; content: string }
-  | { role: 'user'; content: ClaudeContentBlock[] };
+export type ProxyChatResponse = { response: string };
 
-export type ClaudeContentBlock =
-  | { type: 'text'; text: string }
-  | {
-      type: 'image';
-      source: { type: 'base64'; media_type: string; data: string };
-    };
-
-export type ClaudeRequest = {
-  model: 'claude-sonnet-4-6' | 'claude-haiku-4-5-20251001' | 'claude-opus-4-7';
-  max_tokens: number;
-  system?: string;
-  temperature?: number;
-  messages: ClaudeMessage[];
-};
-
-export type ClaudeResponse = {
-  content: Array<{ type: 'text'; text: string }>;
-  stop_reason: string;
-  usage: { input_tokens: number; output_tokens: number };
-};
-
-export async function callClaude(req: ClaudeRequest): Promise<ClaudeResponse> {
-  const r = await fetch(`${PROXY_URL}/v1/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': PROXY_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify(req)
-  });
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error(`claude_proxy_${r.status}: ${txt.slice(0, 200)}`);
+async function postJson(path: string, body: unknown, timeoutMs = 120_000): Promise<ProxyChatResponse> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${PROXY_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${PROXY_KEY}`
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(`welmi_${r.status}: ${err.slice(0, 200)}`);
+    }
+    return (await r.json()) as ProxyChatResponse;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await r.json()) as ClaudeResponse;
 }
 
-/** Extracts the first text block, throws if none found. */
-export function extractText(resp: ClaudeResponse): string {
-  const block = resp.content.find((c) => c.type === 'text');
-  if (!block) throw new Error('claude_no_text_block');
-  return block.text;
+/**
+ * Plain text/JSON-out chat. Use for voice transcript parsing.
+ */
+export async function chat(prompt: string, system?: string): Promise<string> {
+  const out = await postJson('/v1/chat', { prompt, system });
+  return out.response;
+}
+
+/**
+ * Vision call. Sends an image (local URI from camera/gallery) plus a prompt.
+ * The proxy expects multipart: fields { prompt, image }.
+ */
+export async function vision(opts: { imageUri: string; prompt: string; system?: string }): Promise<string> {
+  const form = new FormData();
+  // React Native's FormData accepts { uri, name, type } as a "Blob-like" object.
+  form.append('image', {
+    uri: opts.imageUri,
+    name: 'meal.jpg',
+    type: 'image/jpeg'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  form.append('prompt', opts.prompt);
+  if (opts.system) form.append('system', opts.system);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 120_000);
+  try {
+    const r = await fetch(`${PROXY_URL}/v1/vision`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${PROXY_KEY}` },
+      body: form,
+      signal: ctrl.signal
+    });
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(`welmi_vision_${r.status}: ${err.slice(0, 200)}`);
+    }
+    const json = (await r.json()) as ProxyChatResponse;
+    return json.response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function healthcheck(): Promise<boolean> {
+  try {
+    const r = await fetch(`${PROXY_URL}/health`);
+    return r.ok;
+  } catch {
+    return false;
+  }
 }
