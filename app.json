@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Welmi Killer",
+    "slug": "welmi-killer",
+    "version": "0.1.0",
+    "scheme": "welmikiller",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "fr.kevinmonin.welmikiller",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Scan your meals to log calories instantly.",
+        "NSMicrophoneUsageDescription": "Describe your meals with your voice for instant logging.",
+        "NSSpeechRecognitionUsageDescription": "Convert your voice into structured meal data, on-device.",
+        "NSPhotoLibraryUsageDescription": "Select photos of meals to analyze."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Welmi Killer to access your camera to scan meals."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Welmi Killer to use the microphone for voice meal logging.",
+          "speechRecognitionPermission": "Allow Welmi Killer to perform on-device speech recognition."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": { "origin": false }
+    }
+  }
+}
