@@ -1,44 +1,105 @@
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { T } from '@/components/ui/Text';
+import { PressScale } from '@/components/ui/Pressable';
 import { useProfile } from '@/hooks/useProfile';
+import { colors, radius, type } from '@/theme';
 
 export default function ProfileScreen() {
   const { data: profile } = useProfile();
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-ink-950">
-      <ScrollView className="px-5 pt-4">
-        <Text className="text-white text-3xl font-bold">Profile</Text>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 60 }}>
+        <T variant="label" color={colors.inkLow} uppercase style={{ marginTop: 16 }}>
+          Profile
+        </T>
+        <T
+          style={{
+            fontFamily: 'InstrumentSerif',
+            fontSize: 56,
+            lineHeight: 60,
+            letterSpacing: -2,
+            color: colors.inkHi,
+            marginTop: 4
+          }}
+        >
+          You.
+        </T>
 
-        <View className="bg-ink-800 rounded-2xl p-4 mt-6 gap-3">
-          <Row k="BMR" v={`${profile?.bmrKcal ?? '—'} kcal`} />
-          <Row k="TDEE" v={`${profile?.tdeeKcal ?? '—'} kcal`} />
-          <Row k="Target" v={`${profile?.targetKcal ?? '—'} kcal`} />
-          <Row k="Weight" v={`${profile?.weightKg ?? '—'} kg`} />
-          <Row k="Goal" v={profile?.goal ?? '—'} />
-        </View>
+        {/* Hero stats */}
+        {profile ? (
+          <View style={{ marginTop: 32, gap: 10 }}>
+            <Row k="Daily target" v={`${profile.targetKcal} kcal`} />
+            <Row k="TDEE" v={`${profile.tdeeKcal} kcal`} />
+            <Row k="BMR" v={`${profile.bmrKcal} kcal`} />
+            <Row k="Weight" v={`${profile.weightKg} kg`} />
+            <Row k="Height" v={`${profile.heightCm} cm`} />
+            <Row k="Goal" v={profile.goal} capitalize />
+            <Row k="Pace" v={profile.goal === 'maintain' ? '—' : `${profile.paceKgPerWeek} kg / week`} />
+            <Row k="Adjust mode" v={profile.adjustMode} capitalize />
+          </View>
+        ) : null}
 
-        <Pressable
+        {/* Connections */}
+        <PressScale
+          haptic="tap"
           onPress={() => router.push('/connections')}
-          className="bg-ink-800 border border-ink-700 rounded-2xl p-4 mt-4 flex-row justify-between items-center"
+          style={{
+            marginTop: 32,
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            borderWidth: 1,
+            borderRadius: radius.lg,
+            padding: 18,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}
         >
           <View>
-            <Text className="text-white font-semibold">Connections</Text>
-            <Text className="text-ink-500 text-xs mt-1">Strava, COROS, Oura, Whoop</Text>
+            <T variant="h3" color={colors.inkHi}>
+              Connections
+            </T>
+            <T variant="bodySm" color={colors.inkMid} style={{ marginTop: 2 }}>
+              Strava, COROS, Oura
+            </T>
           </View>
-          <Text className="text-ink-500">›</Text>
-        </Pressable>
+          <T variant="h3" color={colors.inkLow}>
+            ›
+          </T>
+        </PressScale>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v, capitalize = false }: { k: string; v: string; capitalize?: boolean }) {
   return (
-    <View className="flex-row justify-between">
-      <Text className="text-ink-500">{k}</Text>
-      <Text className="text-white font-medium capitalize">{v}</Text>
+    <View
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.divider
+      }}
+    >
+      <T variant="bodyMd" color={colors.inkMid}>
+        {k}
+      </T>
+      <T
+        style={{
+          fontFamily: type.num.family,
+          fontSize: 16,
+          color: colors.inkHi,
+          textTransform: capitalize ? 'capitalize' : 'none'
+        }}
+      >
+        {v}
+      </T>
     </View>
   );
 }

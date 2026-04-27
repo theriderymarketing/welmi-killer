@@ -1,13 +1,15 @@
-import { View, Text, Pressable } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { CalorieRing } from './CalorieRing';
 import { MacroBar } from './MacroBar';
+import { CountUp } from '@/components/ui/CountUp';
+import { T } from '@/components/ui/Text';
+import { PressScale } from '@/components/ui/Pressable';
 import { useToday } from '@/hooks/useToday';
 import { useProfile } from '@/hooks/useProfile';
 import { useFitnessAggregate } from '@/hooks/useFitnessAggregate';
 import { adjustedTargetKcal } from '@/lib/nutrition/adjustedTargets';
-import * as haptics from '@/lib/utils/haptics';
+import { colors, type, radius } from '@/theme';
 
 export function MacroTracker() {
   const { data: profile } = useProfile();
@@ -29,61 +31,139 @@ export function MacroTracker() {
   const progress = consumed.kcal / Math.max(adjustedTarget, 1);
 
   return (
-    <View className="px-5 pt-2">
-      <View className="items-center">
-        <CalorieRing size={260} strokeWidth={18} progress={progress} overage={overage > 0}>
-          <Text className="text-5xl font-bold tracking-tight text-white tabular-nums">
-            {Math.round(remaining)}
-          </Text>
-          <Text className="text-sm text-ink-500 mt-1">kcal left</Text>
-          {overage > 0 ? (
-            <Text className="text-xs text-accent-rose mt-1">+{Math.round(overage)} over</Text>
-          ) : null}
+    <View style={{ paddingHorizontal: 24 }}>
+      {/* Hero ring */}
+      <View style={{ alignItems: 'center', marginTop: 8 }}>
+        <CalorieRing size={300} strokeWidth={14} progress={progress} overage={overage > 0}>
+          <View style={{ alignItems: 'center', marginTop: -4 }}>
+            <CountUp
+              value={overage > 0 ? overage : remaining}
+              style={{
+                fontFamily: type.displayXl.family,
+                fontSize: 96,
+                lineHeight: 100,
+                letterSpacing: -3,
+                color: overage > 0 ? colors.danger : colors.inkHi,
+                textAlign: 'center',
+                width: 220
+              }}
+            />
+            <T variant="label" color={colors.inkLow} uppercase style={{ marginTop: 4 }}>
+              {overage > 0 ? 'KCAL OVER' : 'KCAL LEFT'}
+            </T>
+          </View>
         </CalorieRing>
 
-        {activeKcal > 0 ? (
-          <View className="mt-4 px-3 py-1.5 bg-ink-800 rounded-full flex-row items-center gap-2">
-            <Text className="text-xs text-ink-300">
-              🏃 +{Math.round(activeKcal)} kcal earned
-            </Text>
-          </View>
-        ) : null}
+        {/* Sub-stats row */}
+        <View
+          style={{
+            flexDirection: 'row',
+            marginTop: 24,
+            paddingHorizontal: 4,
+            justifyContent: 'space-between',
+            width: '100%'
+          }}
+        >
+          <Stat label="Eaten" value={Math.round(consumed.kcal)} />
+          <Divider />
+          <Stat label="Burned" value={Math.round(activeKcal)} accent={activeKcal > 0} />
+          <Divider />
+          <Stat label="Goal" value={adjustedTarget} />
+        </View>
       </View>
 
-      <View className="mt-8 gap-4">
-        <MacroBar label="Protein" consumed={consumed.proteinG} target={profile.targetProteinG} color="#34d399" />
-        <MacroBar label="Carbs" consumed={consumed.carbsG} target={profile.targetCarbsG} color="#fbbf24" />
-        <MacroBar label="Fat" consumed={consumed.fatG} target={profile.targetFatG} color="#f87171" />
+      {/* Macros */}
+      <View style={{ marginTop: 40, gap: 18 }}>
+        <MacroBar
+          label="Protein"
+          consumed={consumed.proteinG}
+          target={profile.targetProteinG}
+          color={colors.protein}
+        />
+        <MacroBar
+          label="Carbs"
+          consumed={consumed.carbsG}
+          target={profile.targetCarbsG}
+          color={colors.carbs}
+        />
+        <MacroBar
+          label="Fat"
+          consumed={consumed.fatG}
+          target={profile.targetFatG}
+          color={colors.fat}
+        />
       </View>
 
-      <View className="flex-row gap-3 mt-8">
-        <ActionButton icon="📷" label="Scan" onPress={() => router.push('/log/camera')} />
-        <ActionButton icon="🎤" label="Voice" onPress={() => router.push('/log/voice')} />
-        <ActionButton icon="✏️" label="Manual" onPress={() => router.push('/log/manual')} />
+      {/* Actions — single hero CTA + 2 secondary */}
+      <View style={{ marginTop: 36 }}>
+        <PressScale
+          haptic="press"
+          onPress={() => router.push('/log/camera')}
+          style={{
+            backgroundColor: colors.accent,
+            borderRadius: radius.lg,
+            paddingVertical: 18,
+            alignItems: 'center'
+          }}
+        >
+          <T variant="h3" color={colors.accentInk}>
+            Scan a meal
+          </T>
+        </PressScale>
+
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+          <SecondaryAction label="Voice" onPress={() => router.push('/log/voice')} />
+          <SecondaryAction label="Manual" onPress={() => router.push('/log/manual')} />
+        </View>
       </View>
     </View>
   );
 }
 
-function ActionButton({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
-  const scale = useSharedValue(1);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+function Stat({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
   return (
-    <Animated.View style={[{ flex: 1 }, style]}>
-      <Pressable
-        onPressIn={() => {
-          scale.value = withSpring(0.95);
-          haptics.tap();
+    <View style={{ alignItems: 'center', flex: 1 }}>
+      <CountUp
+        value={value}
+        style={{
+          fontFamily: type.numLg.family,
+          fontSize: type.numLg.size,
+          lineHeight: type.numLg.lineHeight,
+          letterSpacing: type.numLg.letter,
+          color: accent ? colors.accent : colors.inkHi,
+          textAlign: 'center',
+          width: 80
         }}
-        onPressOut={() => {
-          scale.value = withSpring(1);
-        }}
-        onPress={onPress}
-        className="bg-ink-800 border border-ink-700 rounded-2xl py-4 items-center"
-      >
-        <Text className="text-2xl">{icon}</Text>
-        <Text className="text-ink-300 text-xs mt-1 font-medium">{label}</Text>
-      </Pressable>
-    </Animated.View>
+      />
+      <T variant="label" color={colors.inkLow} uppercase style={{ marginTop: 4 }}>
+        {label}
+      </T>
+    </View>
+  );
+}
+
+function Divider() {
+  return <View style={{ width: 1, backgroundColor: colors.divider, marginVertical: 4 }} />;
+}
+
+function SecondaryAction({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <PressScale
+      haptic="tap"
+      onPress={onPress}
+      style={{
+        flex: 1,
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
+        borderWidth: 1,
+        borderRadius: radius.lg,
+        paddingVertical: 16,
+        alignItems: 'center'
+      }}
+    >
+      <T variant="bodyMd" color={colors.inkHi}>
+        {label}
+      </T>
+    </PressScale>
   );
 }

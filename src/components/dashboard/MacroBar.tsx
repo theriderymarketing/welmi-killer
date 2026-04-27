@@ -1,6 +1,8 @@
-import { View, Text } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
 import { useEffect } from 'react';
+import { T } from '@/components/ui/Text';
+import { colors } from '@/theme';
 
 type Props = {
   label: string;
@@ -11,26 +13,40 @@ type Props = {
 
 export function MacroBar({ label, consumed, target, color }: Props) {
   const ratio = Math.min(consumed / Math.max(target, 1), 1);
-  const width = useSharedValue(0);
+  const w = useSharedValue(0);
 
   useEffect(() => {
-    width.value = withTiming(ratio, { duration: 700 });
-  }, [ratio, width]);
+    w.value = withTiming(ratio, { duration: 800, easing: Easing.bezier(0.16, 1, 0.3, 1) });
+  }, [ratio, w]);
 
-  const fillStyle = useAnimatedStyle(() => ({
-    width: `${width.value * 100}%`
-  }));
+  const fillStyle = useAnimatedStyle(() => ({ width: `${w.value * 100}%` }));
 
   return (
     <View>
-      <View className="flex-row justify-between mb-1.5">
-        <Text className="text-ink-300 text-sm font-medium">{label}</Text>
-        <Text className="text-ink-500 text-sm tabular-nums">
-          {Math.round(consumed)} / {target} g
-        </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+        <T variant="label" color={colors.inkMid} uppercase>
+          {label}
+        </T>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+          <T variant="num" color={colors.inkHi}>
+            {Math.round(consumed)}
+          </T>
+          <T variant="bodySm" color={colors.inkLow}>
+            / {target}g
+          </T>
+        </View>
       </View>
-      <View className="h-2 bg-ink-800 rounded-full overflow-hidden">
-        <Animated.View style={[{ height: '100%', backgroundColor: color, borderRadius: 999 }, fillStyle]} />
+      <View
+        style={{
+          height: 4,
+          backgroundColor: colors.divider,
+          borderRadius: 999,
+          overflow: 'hidden'
+        }}
+      >
+        <Animated.View
+          style={[{ height: '100%', backgroundColor: color, borderRadius: 999 }, fillStyle]}
+        />
       </View>
     </View>
   );

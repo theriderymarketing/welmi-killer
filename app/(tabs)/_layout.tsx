@@ -1,5 +1,28 @@
 import { Tabs } from 'expo-router';
-import { Text } from 'react-native';
+import { View } from 'react-native';
+import { T } from '@/components/ui/Text';
+import { colors } from '@/theme';
+
+const ICONS: Record<string, string> = {
+  index: '◐',
+  stats: '◧',
+  profile: '◔'
+};
+
+function TabBarIcon({ name, focused }: { name: keyof typeof ICONS; focused: boolean }) {
+  return (
+    <View style={{ alignItems: 'center', justifyContent: 'center', width: 32, height: 32 }}>
+      <T
+        style={{
+          fontSize: 18,
+          color: focused ? colors.accent : colors.inkLow
+        }}
+      >
+        {ICONS[name]}
+      </T>
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   return (
@@ -7,34 +30,41 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#09090b',
-          borderTopColor: '#27272a',
-          height: 84
+          backgroundColor: colors.canvas,
+          borderTopColor: colors.divider,
+          borderTopWidth: 1,
+          height: 76,
+          paddingTop: 6
         },
-        tabBarActiveTintColor: '#a3e635',
-        tabBarInactiveTintColor: '#71717a',
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' }
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.inkLow,
+        tabBarLabelStyle: {
+          fontFamily: 'Inter-600',
+          fontSize: 10,
+          letterSpacing: 0.8,
+          textTransform: 'uppercase'
+        }
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Today',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🍽️</Text>
+          tabBarIcon: ({ focused }) => <TabBarIcon name="index" focused={focused} />
         }}
       />
       <Tabs.Screen
         name="stats"
         options={{
-          title: 'Stats',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📊</Text>
+          title: 'History',
+          tabBarIcon: ({ focused }) => <TabBarIcon name="stats" focused={focused} />
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>👤</Text>
+          title: 'You',
+          tabBarIcon: ({ focused }) => <TabBarIcon name="profile" focused={focused} />
         }}
       />
     </Tabs>

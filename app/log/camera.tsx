@@ -1,8 +1,12 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { View, Text, Pressable, ActivityIndicator } from 'react-native';
+import { View, Pressable, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRef, useState } from 'react';
 import { router } from 'expo-router';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { T } from '@/components/ui/Text';
 import { useAnalyzePhoto, useSaveMeal } from '@/hooks/useAnalyzeFood';
+import { colors, radius } from '@/theme';
 import * as haptics from '@/lib/utils/haptics';
 
 export default function CameraScreen() {
@@ -16,12 +20,30 @@ export default function CameraScreen() {
   if (!perm) return null;
   if (!perm.granted) {
     return (
-      <View className="flex-1 bg-ink-950 items-center justify-center px-6">
-        <Text className="text-white text-center mb-4">Camera permission required to scan meals.</Text>
-        <Pressable onPress={requestPerm} className="bg-accent-lime px-6 py-3 rounded-full">
-          <Text className="text-ink-950 font-semibold">Grant access</Text>
-        </Pressable>
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.canvas }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+          <T variant="h2" color={colors.inkHi} align="center">
+            Camera permission needed
+          </T>
+          <T variant="body" color={colors.inkMid} align="center" style={{ marginTop: 12 }}>
+            We don't store your photos. Each meal photo is sent to the AI and discarded.
+          </T>
+          <Pressable
+            onPress={requestPerm}
+            style={{
+              marginTop: 32,
+              backgroundColor: colors.accent,
+              borderRadius: radius.lg,
+              paddingHorizontal: 28,
+              paddingVertical: 14
+            }}
+          >
+            <T variant="bodyMd" color={colors.accentInk}>
+              Grant access
+            </T>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -64,27 +86,96 @@ export default function CameraScreen() {
   };
 
   return (
-    <View className="flex-1 bg-black">
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
       <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
-      <View className="absolute inset-x-0 bottom-12 items-center">
-        {busy ? (
-          <View className="bg-black/60 rounded-2xl px-5 py-3">
-            <ActivityIndicator color="#a3e635" />
-            <Text className="text-white text-xs mt-2">Analyzing…</Text>
-          </View>
-        ) : (
+
+      {/* Top: cancel + framing hint */}
+      <SafeAreaView edges={['top']} style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
+        <View
+          style={{
+            paddingHorizontal: 20,
+            paddingTop: 8,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}
+        >
           <Pressable
-            onPress={capture}
-            className="w-20 h-20 rounded-full bg-white border-4 border-accent-lime"
-          />
-        )}
-      </View>
-      <Pressable
-        onPress={() => router.back()}
-        className="absolute top-12 left-5 bg-black/50 px-4 py-2 rounded-full"
-      >
-        <Text className="text-white">Cancel</Text>
-      </Pressable>
+            onPress={() => router.back()}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: 'rgba(0,0,0,0.5)'
+            }}
+          >
+            <T variant="bodyMd" color={colors.inkHi}>
+              Cancel
+            </T>
+          </Pressable>
+          <View
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: 'rgba(0,0,0,0.5)'
+            }}
+          >
+            <T variant="label" color={colors.inkMid} uppercase>
+              Frame the plate
+            </T>
+          </View>
+        </View>
+      </SafeAreaView>
+
+      {/* Bottom: shutter */}
+      <SafeAreaView edges={['bottom']} style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+        <View style={{ alignItems: 'center', paddingBottom: 24 }}>
+          {busy ? (
+            <Animated.View
+              entering={FadeIn.duration(300)}
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                paddingHorizontal: 28,
+                paddingVertical: 18,
+                borderRadius: radius.lg,
+                alignItems: 'center'
+              }}
+            >
+              <ActivityIndicator color={colors.accent} />
+              <T variant="bodyMd" color={colors.inkHi} style={{ marginTop: 10 }}>
+                Reading the plate…
+              </T>
+              <T variant="bodySm" color={colors.inkMid} style={{ marginTop: 4 }}>
+                Identifying items, estimating portions
+              </T>
+            </Animated.View>
+          ) : (
+            <Pressable
+              onPress={capture}
+              style={{
+                width: 84,
+                height: 84,
+                borderRadius: 999,
+                backgroundColor: colors.inkHi,
+                borderWidth: 4,
+                borderColor: colors.accent,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <View
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 999,
+                  backgroundColor: colors.accent
+                }}
+              />
+            </Pressable>
+          )}
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
