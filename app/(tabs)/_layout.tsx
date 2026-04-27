@@ -5,6 +5,7 @@ import { colors } from '@/theme';
 
 const ICONS: Record<string, string> = {
   index: '◐',
+  train: '◈',
   stats: '◧',
   profile: '◔'
 };
@@ -51,6 +52,13 @@ export default function TabsLayout() {
         options={{
           title: 'Today',
           tabBarIcon: ({ focused }) => <TabBarIcon name="index" focused={focused} />
+        }}
+      />
+      <Tabs.Screen
+        name="train"
+        options={{
+          title: 'Train',
+          tabBarIcon: ({ focused }) => <TabBarIcon name="train" focused={focused} />
         }}
       />
       <Tabs.Screen

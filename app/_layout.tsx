@@ -82,6 +82,7 @@ export default function RootLayout() {
           />
           <Stack.Screen name="connections/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="meal/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="exercise/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
       </QueryClientProvider>
     </GestureHandlerRootView>
