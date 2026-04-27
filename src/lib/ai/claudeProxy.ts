@@ -5,25 +5,39 @@
  *   Cloudflare Worker (welmi-proxy.welmi.workers.dev)
  *     -> wakes Codespace (FastAPI :8787)
  *     -> Claude Code CLI in headless (`claude -p ...`)
- *     -> Returns JSON
+ *     -> Returns raw Claude Code CLI JSON: { result: string, ...usage, model }
  *
  * Auth: Bearer PROXY_API_KEY.
  * Cold start (first call after 30min idle): 60-90s.
- * Warm calls: 2-3s.
+ * First chat call: ~25s (CLI bootstrap + cache prime).
+ * Warm calls: 2-5s.
  * Concurrency: 1 request at a time (asyncio mutex on /v1/chat and /v1/vision).
  *
  * Endpoints:
- *   POST /v1/chat    { prompt: string, system?: string }              -> { response: string }
- *   POST /v1/vision  multipart fields { prompt, image }               -> { response: string }
+ *   POST /v1/chat    JSON  { prompt, system? }     -> ClaudeCliResult
+ *   POST /v1/vision  multipart  prompt, image      -> ClaudeCliResult
  *   GET  /health
  */
 
 const PROXY_URL = process.env.EXPO_PUBLIC_CLAUDE_PROXY_URL!;
 const PROXY_KEY = process.env.EXPO_PUBLIC_CLAUDE_PROXY_KEY!;
 
-export type ProxyChatResponse = { response: string };
+export type ClaudeCliResult = {
+  result: string;
+  is_error: boolean;
+  duration_ms?: number;
+  total_cost_usd?: number;
+  usage?: unknown;
+  modelUsage?: Record<string, unknown>;
+};
 
-async function postJson(path: string, body: unknown, timeoutMs = 120_000): Promise<ProxyChatResponse> {
+class ProxyError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function postJson(path: string, body: unknown, timeoutMs = 120_000): Promise<ClaudeCliResult> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -37,30 +51,29 @@ async function postJson(path: string, body: unknown, timeoutMs = 120_000): Promi
       signal: ctrl.signal
     });
     if (!r.ok) {
-      const err = await r.text();
-      throw new Error(`welmi_${r.status}: ${err.slice(0, 200)}`);
+      const txt = await r.text();
+      throw new ProxyError(r.status, `welmi_${r.status}: ${txt.slice(0, 200)}`);
     }
-    return (await r.json()) as ProxyChatResponse;
+    const json = (await r.json()) as ClaudeCliResult;
+    if (json.is_error) throw new ProxyError(500, `claude_error: ${json.result?.slice(0, 200)}`);
+    return json;
   } finally {
     clearTimeout(timer);
   }
 }
 
-/**
- * Plain text/JSON-out chat. Use for voice transcript parsing.
- */
+/** Plain text/JSON-out chat. Returns the raw `.result` text from Claude. */
 export async function chat(prompt: string, system?: string): Promise<string> {
   const out = await postJson('/v1/chat', { prompt, system });
-  return out.response;
+  return out.result;
 }
 
 /**
  * Vision call. Sends an image (local URI from camera/gallery) plus a prompt.
- * The proxy expects multipart: fields { prompt, image }.
+ * The proxy expects multipart with fields { prompt, image }.
  */
 export async function vision(opts: { imageUri: string; prompt: string; system?: string }): Promise<string> {
   const form = new FormData();
-  // React Native's FormData accepts { uri, name, type } as a "Blob-like" object.
   form.append('image', {
     uri: opts.imageUri,
     name: 'meal.jpg',
@@ -80,11 +93,12 @@ export async function vision(opts: { imageUri: string; prompt: string; system?: 
       signal: ctrl.signal
     });
     if (!r.ok) {
-      const err = await r.text();
-      throw new Error(`welmi_vision_${r.status}: ${err.slice(0, 200)}`);
+      const txt = await r.text();
+      throw new ProxyError(r.status, `welmi_vision_${r.status}: ${txt.slice(0, 200)}`);
     }
-    const json = (await r.json()) as ProxyChatResponse;
-    return json.response;
+    const json = (await r.json()) as ClaudeCliResult;
+    if (json.is_error) throw new ProxyError(500, `claude_vision_error: ${json.result?.slice(0, 200)}`);
+    return json.result;
   } finally {
     clearTimeout(timer);
   }
@@ -93,7 +107,9 @@ export async function vision(opts: { imageUri: string; prompt: string; system?: 
 export async function healthcheck(): Promise<boolean> {
   try {
     const r = await fetch(`${PROXY_URL}/health`);
-    return r.ok;
+    if (!r.ok) return false;
+    const j = (await r.json()) as { status?: string };
+    return j.status === 'healthy';
   } catch {
     return false;
   }
